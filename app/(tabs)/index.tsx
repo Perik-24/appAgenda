@@ -28,9 +28,9 @@ import {
   TouchableWithoutFeedback,
   View
 } from 'react-native';
-import { Calendar as BigCalendar, Event } from 'react-native-big-calendar';
-import { auth } from '../src/firebase/firebaseConfig';
-import { db } from '../src/firebase/firestore';
+import { Calendar as BigCalendar, ICalendarEventBase } from 'react-native-big-calendar';
+import { auth } from '../../src/firebase/firebaseConfig';
+import { db } from '../../src/firebase/firestore';
 
 export default function HomeScreen() {
   const [uid, setUid] = useState<string | null>(null);
@@ -50,11 +50,12 @@ export default function HomeScreen() {
   const [formVisible, setFormVisible] = useState(false);
 
   function parseLocalDate(dateString: string) {
-  const [year, month, day] = dateString.split('-').map(Number);
-  return new Date(year, month - 1, day);
-}
+    const [year, month, day] = dateString.split('-').map(Number);
+    return new Date(year, month - 1, day);
+  }
 
-  
+  type CalendarEvent = ICalendarEventBase & { id: string; color?: string };
+
   const coloresDisponibles = ['#1e90ff', '#ff6347', '#32cd32', '#ffa500', '#800080'];
 
   const colors = {
@@ -65,6 +66,16 @@ export default function HomeScreen() {
     primary: '#1e90ff',
     overlay: '#00000055',
     danger: '#ff4d4f',
+  };
+
+  const getWeekdayLabels = (locale: string, weekStartsOn: number) => {
+    const base = new Date(Date.UTC(2021, 0, 3));
+    const formatter = new Intl.DateTimeFormat(locale, { weekday: 'short' });
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(base);
+      d.setUTCDate(base.getUTCDate() + ((weekStartsOn + i) % 7));
+      return formatter.format(d);
+    });
   };
 
   const nombreMes = (fecha: Date) =>
@@ -196,40 +207,40 @@ export default function HomeScreen() {
     ? eventos.filter((e) => e.date === fechaSeleccionada)
     : [];
 
-const eventosCalendar: Event[] = eventos
-  .map((e) => {
-    // 🔒 VALIDAR FECHA
-    if (!e.date || typeof e.date !== 'string') return null;
+  const eventosCalendar: CalendarEvent[] = eventos
+    .map((e) => {
+      // 🔒 VALIDAR FECHA
+      if (!e.date || typeof e.date !== 'string') return null;
 
-    const start = parseLocalDate(e.date);
+      const start = parseLocalDate(e.date);
 
-    if (isNaN(start.getTime())) return null;
+      if (isNaN(start.getTime())) return null;
 
-    // 🕒 VALIDAR HORA
-    if (e.time && typeof e.time === 'string') {
-      const time24 = convertTo24Hour(e.time); // "19:30:00"
+      // 🕒 VALIDAR HORA
+      if (e.time && typeof e.time === 'string') {
+        const time24 = convertTo24Hour(e.time); // "19:30:00"
 
-      const parts = time24.split(':').map(Number);
-      if (parts.length >= 2 && !parts.some(isNaN)) {
-        const [hours, minutes] = parts;
-        start.setHours(hours, minutes, 0, 0);
+        const parts = time24.split(':').map(Number);
+        if (parts.length >= 2 && !parts.some(isNaN)) {
+          const [hours, minutes] = parts;
+          start.setHours(hours, minutes, 0, 0);
+        }
       }
-    }
 
-    const end = new Date(start);
-    end.setHours(start.getHours() + 1);
+      const end = new Date(start);
+      end.setHours(start.getHours() + 1);
 
-    if (isNaN(end.getTime())) return null;
+      if (isNaN(end.getTime())) return null;
 
-    return {
-      id: e.id,
-      title: e.title ?? 'Evento',
-      start,
-      end,
-      color: e.color || coloresDisponibles[0],
-    };
-  })
-  .filter(Boolean) as Event[];
+      return {
+        id: e.id,
+        title: e.title ?? 'Evento',
+        start,
+        end,
+        color: e.color || coloresDisponibles[0],
+      };
+    })
+    .filter(Boolean) as CalendarEvent[];
 
   // Convierte "hh:mm AM/PM" a formato 24h para Date()
   function convertTo24Hour(time: string) {
@@ -280,8 +291,6 @@ const eventosCalendar: Event[] = eventos
           date={mesVisible}
           onPressCell={(date) => setFechaSeleccionada(date.toISOString().split('T')[0])}
           headerContainerStyle={{ backgroundColor: colors.background }}
-          headerTextStyle={{ color: colors.text }}
-          dayHeaderTextStyle={{ color: colors.text }}
           hourStyle={{ color: colors.text }}
           eventCellStyle={(event) => ({
             backgroundColor: event.color,
@@ -289,17 +298,28 @@ const eventosCalendar: Event[] = eventos
             borderRadius: 8,
             padding: 2,
           })}
-          monthCellStyle={({ date }) => {
+          calendarCellStyle={(date) => {
+            if (!date) return {};
             const fechaISO = date.toISOString().split('T')[0];
             const isSelected = fechaSeleccionada === fechaISO;
             const baseColor = isSelected ? colors.primary : darkMode ? '#2a2a2a' : '#e0e0e0';
             return { backgroundColor: baseColor, borderRadius: isSelected ? 25 : 8, width: 40, height: 40, justifyContent: 'center', alignItems: 'center' };
           }}
-          monthCellTextStyle={({ date }) => {
+          calendarCellTextStyle={(date) => {
+            if (!date) return {};
             const fechaISO = date.toISOString().split('T')[0];
             const isSelected = fechaSeleccionada === fechaISO;
             return { color: isSelected ? '#fff' : darkMode ? '#fff' : '#000', fontWeight: isSelected ? 'bold' : 'normal', textAlign: 'center' };
           }}
+          renderHeaderForMonthView={({ locale, weekStartsOn, style }) => (
+            <View style={[style, { backgroundColor: colors.background, flexDirection: 'row' }]}>
+              {getWeekdayLabels(locale, weekStartsOn).map((label) => (
+                <Text key={label} style={{ flex: 1, textAlign: 'center', color: colors.text }}>
+                  {label}
+                </Text>
+              ))}
+            </View>
+          )}
         />
 
         {/* BOTÓN NUEVO EVENTO */}
@@ -322,68 +342,68 @@ const eventosCalendar: Event[] = eventos
         </Pressable>
 
         {/* MENSAJE DEL DÍA Y LISTA DE EVENTOS */}
-    <View style={{ marginTop: 16 }}>
-  {fechaSeleccionada && (
-    <Text style={{ fontSize: 18, fontWeight: 'bold', color: colors.text, marginBottom: 12 }}>
-      {eventosDelDia.length > 0
-        ? `Eventos del ${parseLocalDate(fechaSeleccionada).toLocaleDateString('es-ES', {
-            day: 'numeric',
-            month: 'long',
-            year: 'numeric',
-          })}`
-        : `No hay eventos para el ${parseLocalDate(fechaSeleccionada).toLocaleDateString('es-ES', {
-            day: 'numeric',
-            month: 'long',
-            year: 'numeric',
-          })}`}
-    </Text>
-  )}
-
-  {eventosDelDia.length > 0 &&
-    eventosDelDia.map((item) => (
-      <View
-        key={item.id}
-        style={{
-          backgroundColor: item.color || colors.primary,
-          padding: 16,
-          marginBottom: 12,
-          borderRadius: 16,
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: 2 },
-          shadowOpacity: 0.15,
-          shadowRadius: 5,
-          elevation: 5,
-          flexDirection: 'row',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-        }}
-      >
-        <View style={{ flex: 1 }}>
-          <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 16 }}>{item.title}</Text>
-          <Text style={{ color: '#fff', marginTop: 4 }}>{item.time}</Text>
-          {item.description && (
-            <Text style={{ color: '#fff', marginTop: 2, fontSize: 14 }}>{item.description}</Text>
+        <View style={{ marginTop: 16 }}>
+          {fechaSeleccionada && (
+            <Text style={{ fontSize: 18, fontWeight: 'bold', color: colors.text, marginBottom: 12 }}>
+              {eventosDelDia.length > 0
+                ? `Eventos del ${parseLocalDate(fechaSeleccionada).toLocaleDateString('es-ES', {
+                  day: 'numeric',
+                  month: 'long',
+                  year: 'numeric',
+                })}`
+                : `No hay eventos para el ${parseLocalDate(fechaSeleccionada).toLocaleDateString('es-ES', {
+                  day: 'numeric',
+                  month: 'long',
+                  year: 'numeric',
+                })}`}
+            </Text>
           )}
-        </View>
 
-        <View style={{ flexDirection: 'row', marginLeft: 10 }}>
-          <TouchableOpacity
-            onPress={() => abrirFormulario(item)}
-            style={{ padding: 6, borderRadius: 8, marginRight: 6, backgroundColor: colors.primary }}
-          >
-            <Ionicons name="pencil-outline" size={20} color="#fff" />
-          </TouchableOpacity>
+          {eventosDelDia.length > 0 &&
+            eventosDelDia.map((item) => (
+              <View
+                key={item.id}
+                style={{
+                  backgroundColor: item.color || colors.primary,
+                  padding: 16,
+                  marginBottom: 12,
+                  borderRadius: 16,
+                  shadowColor: '#000',
+                  shadowOffset: { width: 0, height: 2 },
+                  shadowOpacity: 0.15,
+                  shadowRadius: 5,
+                  elevation: 5,
+                  flexDirection: 'row',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 16 }}>{item.title}</Text>
+                  <Text style={{ color: '#fff', marginTop: 4 }}>{item.time}</Text>
+                  {item.description && (
+                    <Text style={{ color: '#fff', marginTop: 2, fontSize: 14 }}>{item.description}</Text>
+                  )}
+                </View>
 
-          <TouchableOpacity
-            onPress={() => eliminarEvento(item.id)}
-            style={{ padding: 6, borderRadius: 8, backgroundColor: colors.danger }}
-          >
-            <Ionicons name="trash-outline" size={20} color="#fff" />
-          </TouchableOpacity>
+                <View style={{ flexDirection: 'row', marginLeft: 10 }}>
+                  <TouchableOpacity
+                    onPress={() => abrirFormulario(item)}
+                    style={{ padding: 6, borderRadius: 8, marginRight: 6, backgroundColor: colors.primary }}
+                  >
+                    <Ionicons name="pencil-outline" size={20} color="#fff" />
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={() => eliminarEvento(item.id)}
+                    style={{ padding: 6, borderRadius: 8, backgroundColor: colors.danger }}
+                  >
+                    <Ionicons name="trash-outline" size={20} color="#fff" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
         </View>
-      </View>
-    ))}
-</View>
 
       </ScrollView>
 

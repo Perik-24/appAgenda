@@ -1,6 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 
+
 const firebaseConfig = {
   apiKey: "AIzaSyBZtOrpT8wBcRXdGvCPCwsmjdvq83dWraE",
   authDomain: "agenda-compartida-4e2b6.firebaseapp.com",
@@ -11,4 +12,5 @@ const firebaseConfig = {
 };
 
 export const app = initializeApp(firebaseConfig);
+
 export const auth = getAuth(app);
